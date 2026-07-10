@@ -1,0 +1,9 @@
+# Zugangsdaten — NIE ins Repo
+.env
+
+# Rohe API-Responses: enthalten Klarnamen + IDs echter Schüler:innen
+spike/out/
+
+__pycache__/
+*.pyc
+.claude/settings.local.json

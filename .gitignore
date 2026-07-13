@@ -7,3 +7,7 @@ spike/out/
 __pycache__/
 *.pyc
 .claude/settings.local.json
+
+# ASV-Export — personenbezogene Daten, NIE ins Repo
+asv_export.csv
+data/

@@ -14,16 +14,18 @@ PKM-Vault (`Projekte/ASV-webUntis-Abgleich`).
   aus dem Export, 19 Tests grün.
 - **Phase 2** (WebUntis-Fetcher) gebaut — `asv_webuntis/fetcher.py`, Ist-Zustand
   read-only aus `/lesson` mit lokalem Cache.
-- **Phase 3** (Abgleich/Diff) Kern gebaut — `asv_webuntis/diff.py` +
-  `abgleich.py`. Befund: Gruppen-Namensräume ASV↔WebUntis disjunkt → Auto-Mapper
-  als nächstes.
+- **Phase 3** (Abgleich) läuft end-to-end — `diff.py` + `mapper.py` + `abgleich.py`.
+  Auto-Mapper (Mitglieder-Überlappung, eins-zu-viele für jahrgangsübergreifende
+  Kurse) + Mapping-Sentinel `;-`. `GRUPPE_UNBEKANNT` 289 → 11, `FEHLT_IN_WU` 36.
+  Rest ist Kuratierung (8 POOL, F6x), kein Code.
 
 ## Struktur
 
 - `asv_webuntis/parser.py` — ASV-Export → `Record(schueler_key, gruppe, fach, …)`.
 - `asv_webuntis/fetcher.py` — WebUntis-Ist → `Ist(extern_key, studentgroup, von, bis)`.
+- `asv_webuntis/mapper.py` — Auto-Mapping ASV↔WU-Gruppe über Mitglieder-Überlappung.
 - `asv_webuntis/diff.py` — Soll↔Ist-Diff → `Finding(art, schueler_key, gruppe)`.
-- `asv_webuntis/abgleich.py` — CLI: Parser + Fetcher + Diff, kategorisierter Report.
+- `asv_webuntis/abgleich.py` — CLI: Parser + Fetcher + Mapping + Diff, Report.
 - `asv_webuntis/inspect_export.py` — Export sezieren (Encoding/Spalten erkennen).
 - `tests/` — Unit-Tests: `python3 -m unittest discover -s tests -t .`
 - `spike/` — Wegwerf-Spikes aus Phase 0 (dokumentiert, können entfernt werden).

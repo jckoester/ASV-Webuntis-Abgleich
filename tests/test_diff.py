@@ -30,6 +30,22 @@ class TestDiff(unittest.TestCase):
         self.assertIn(("FEHLT_IN_WU", "C", "XKurs"), got)
         self.assertNotIn(("GRUPPE_UNBEKANNT", "C", "XKurs"), got)
 
+    def test_eins_zu_viele_jahrgansuebergreifend(self):
+        # ein ASV-Code → zwei WU-Gruppen; Schüler in EINER davon = Treffer
+        asv = {("A", "BKlk"), ("B", "BKlk")}
+        ist = {("A", "BK_11"), ("B", "BK_12")}
+        findings = diff(asv, ist, {"BK_11", "BK_12"}, {"A", "B"},
+                        mapping={"BKlk": ["BK_11", "BK_12"]})
+        self.assertEqual(findings, [])  # beide gedeckt, kein FEHLT/ZUVIEL
+        # ohne die zweite Zielgruppe wäre B FEHLT_IN_WU:
+        f2 = diff(asv, ist, {"BK_11", "BK_12"}, {"A", "B"}, mapping={"BKlk": ["BK_11"]})
+        self.assertIn(("FEHLT_IN_WU", "B"), {(x.art, x.schueler_key) for x in f2})
+
+    def test_ignore_sentinel_kein_befund(self):
+        # POOL_X bewusst als "kein WU-Pendant" markiert → kein GRUPPE_UNBEKANNT
+        f = diff({("A", "POOL_X")}, set(), set(), {"A"}, mapping={"POOL_X": ["-"]})
+        self.assertEqual(f, [])
+
     def test_summarize(self):
         s = summarize(diff(self.asv, self.ist, self.wu_groups, self.wu_students))
         self.assertEqual(s["counts"]["FEHLT_IN_WU"], 1)

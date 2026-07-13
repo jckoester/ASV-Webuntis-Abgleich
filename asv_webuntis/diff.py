@@ -18,6 +18,10 @@ from pathlib import Path
 
 CATEGORIES = ("FEHLT_IN_WU", "ZUVIEL_IN_WU", "GRUPPE_UNBEKANNT", "SCHUELER_UNBEKANNT")
 
+# Mapping-Ziel "-" = bewusst kein WebUntis-Pendant (strukturell geklärt, z. B.
+# Poolstunden, die in WU als normale Fachstunden laufen) → nicht als Befund melden.
+IGNORE = "-"
+
 Pair = tuple[str, str]
 
 
@@ -28,30 +32,45 @@ class Finding:
     gruppe: str  # ASV-Gruppenname (bzw. WebUntis-Name bei ZUVIEL_IN_WU)
 
 
+def _targets(mapping: Mapping, g_asv: str) -> list[str]:
+    """Zielgruppen einer ASV-Gruppe. Eins-zu-viele (jahrgangsübergreifende Kurse:
+    ein ASV-Code → mehrere WU-Gruppen). Ohne Mapping: der ASV-Name selbst."""
+    t = mapping.get(g_asv)
+    if t is None:
+        return [g_asv]
+    return [t] if isinstance(t, str) else list(t)
+
+
 def diff(
     asv_pairs: Iterable[Pair],
     ist_pairs: Iterable[Pair],
     wu_groups: Iterable[str],
     wu_students: Iterable[str],
-    mapping: Mapping[str, str] | None = None,
+    mapping: Mapping[str, str | list[str]] | None = None,
 ) -> list[Finding]:
-    """Kategorisierter Diff. `mapping` übersetzt ASV-Gruppennamen → WebUntis-
-    Namen (fehlt ein Eintrag, wird der ASV-Name unverändert verwendet)."""
+    """Kategorisierter Diff. `mapping` übersetzt ASV-Gruppe → eine *oder mehrere*
+    WebUntis-Gruppen; ein Schüler gilt als vorhanden, wenn er in **irgendeiner**
+    Zielgruppe ist (deckt jahrgangsübergreifende Kurse ab)."""
     m = mapping or {}
     wu_groups = set(wu_groups)
     wu_students = set(wu_students)
     ist_pairs = set(ist_pairs)
 
     out: list[Finding] = []
-    expected: set[Pair] = set()  # was ASV in WebUntis erwartet (gemappt)
+    expected: set[Pair] = set()
     for s, g_asv in asv_pairs:
-        g = m.get(g_asv, g_asv)
-        expected.add((s, g))
+        targets = _targets(m, g_asv)
+        if targets == [IGNORE]:  # bewusst kein WU-Pendant → überspringen
+            continue
+        for t in targets:
+            expected.add((s, t))
         if s not in wu_students:
             out.append(Finding("SCHUELER_UNBEKANNT", s, g_asv))
-        elif g not in wu_groups:
+            continue
+        known = [t for t in targets if t in wu_groups]
+        if not known:
             out.append(Finding("GRUPPE_UNBEKANNT", s, g_asv))
-        elif (s, g) not in ist_pairs:
+        elif not any((s, t) in ist_pairs for t in known):
             out.append(Finding("FEHLT_IN_WU", s, g_asv))
 
     for s, g_wu in ist_pairs:
@@ -72,13 +91,16 @@ def summarize(findings: Iterable[Finding]) -> dict:
     }
 
 
-def load_mapping(path: str | Path) -> dict[str, str]:
-    """Mapping-CSV `ASV-Gruppe;WebUntis-Gruppe` (Kommentare mit `#`)."""
-    m: dict[str, str] = {}
+def load_mapping(path: str | Path) -> dict[str, list[str]]:
+    """Mapping-CSV `ASV-Gruppe;WU-Gruppe[,WU-Gruppe…]` (Kommentare mit `#`).
+    Mehrere Zielgruppen komma-getrennt → jahrgangsübergreifende Kurse."""
+    m: dict[str, list[str]] = {}
     with open(path, encoding="utf-8", newline="") as f:
         for row in csv.reader(f, delimiter=";"):
             if len(row) >= 2 and row[0].strip() and not row[0].lstrip().startswith("#"):
-                m[row[0].strip()] = row[1].strip()
+                targets = [t.strip() for t in row[1].split(",") if t.strip()]
+                if targets:
+                    m[row[0].strip()] = targets
     return m
 
 

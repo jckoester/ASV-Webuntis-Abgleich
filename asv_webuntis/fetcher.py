@@ -117,7 +117,9 @@ def fetch_lessons(
     cache = Path(cache_dir) / f"lesson_{start}_{end}.json"
     if cache.exists() and not refresh:
         return json.loads(cache.read_text(encoding="utf-8"))
-    token = get_token(cred or credentials_from_env())
+    if cred is None:  # Cache-Miss / --refresh: Credentials lazy aus .env
+        cred = credentials_from_env()
+    token = get_token(cred)
     url = (f"{cred.api_base}{_LESSON_PATH}?"
            + urllib.parse.urlencode({"start": start, "end": end}))
     req = urllib.request.Request(url, headers={
@@ -164,6 +166,19 @@ def all_students(raw: dict) -> set[str]:
     """Alle in den Lessons vorkommenden Schüler (externKey)."""
     return {st.get("externKey") for lesson in raw.get("lessons") or []
             for st in (lesson.get("students") or []) if st.get("externKey")}
+
+
+def student_names(raw: dict) -> dict[str, str]:
+    """externKey → "Vorname Nachname" aus den WebUntis-Lessons (für Schüler, die
+    nicht im ASV-Export stehen). PII."""
+    out: dict[str, str] = {}
+    for lesson in raw.get("lessons") or []:
+        for st in (lesson.get("students") or []):
+            k = st.get("externKey")
+            if k and k not in out:
+                out[k] = f"{(st.get('firstName') or '').strip()} " \
+                         f"{(st.get('lastName') or '').strip()}".strip()
+    return out
 
 
 def ist_at(records: Iterable[Ist], stichtag: str) -> set[tuple[str, str]]:

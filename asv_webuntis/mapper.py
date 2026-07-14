@@ -15,9 +15,11 @@ import re
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import fetcher
 from . import parser as asvparser
+from .diff import MAPPING_AUTO, MAPPING_MANUAL, load_mapping
 
 Pair = tuple[str, str]
 
@@ -86,6 +88,28 @@ def propose(asv_pairs: Iterable[Pair], ist_pairs: Iterable[Pair],
     return out
 
 
+def expand_duplicates(proposals: list[Proposal], ist_pairs: Iterable[Pair]) -> list[Proposal]:
+    """WebUntis-Gruppen mit **identischer Schülermenge** sind Duplikate (z. B.
+    Kurshalbjahr-Varianten `M2_12`/`M2_12_1`). Jede Zielgruppe eines Vorschlags
+    wird um ihre Duplikate ergänzt, damit die Zwillingsgruppe kein Phantom bleibt."""
+    wu_m = members(ist_pairs)
+    by_members: dict[frozenset, list[str]] = collections.defaultdict(list)
+    for g, m in wu_m.items():
+        by_members[frozenset(m)].append(g)
+    dup = {g: grps for grps in by_members.values() if len(grps) > 1 for g in grps}
+    if not dup:
+        return proposals
+    out = []
+    for p in proposals:
+        expanded: list[str] = []
+        for t in p.wu_gruppen:
+            for d in sorted(dup.get(t, [t])):
+                if d not in expanded:
+                    expanded.append(d)
+        out.append(Proposal(p.asv_gruppe, tuple(expanded), p.abdeckung, p.asv_size))
+    return out
+
+
 def _resolve_range(a) -> tuple[str, str]:
     if a.start and a.end:
         return a.start, a.end
@@ -102,7 +126,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--woche", action="store_true")
     ap.add_argument("--start")
     ap.add_argument("--end")
-    ap.add_argument("--write", help="Mapping-CSV schreiben (asv;wu[,wu]) ab --min-abdeckung")
+    ap.add_argument("--write", nargs="?", const=MAPPING_AUTO,
+                    help=f"Auto-Vorschläge schreiben (Default {MAPPING_AUTO}) ab --min-abdeckung")
     ap.add_argument("--min-abdeckung", type=float, default=0.9)
     ap.add_argument("--max-targets", type=int, default=4,
                     help="max. Zielgruppen je ASV-Gruppe (mehr = POOL-Streuung → nicht schreiben)")
@@ -117,7 +142,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(f"✗ {e}")
     ist_pairs = fetcher.ist_at(fetcher.lessons_to_ist(raw), a.stichtag)
 
-    proposals = propose(asv_pairs, ist_pairs)
+    proposals = expand_duplicates(propose(asv_pairs, ist_pairs), ist_pairs)
     n_asv = len({g for _, g in asv_pairs})
     matched = {p.asv_gruppe for p in proposals}
     # >MAX_TARGETS Zielgruppen = Streuung (POOL) → nicht als Mapping schreiben
@@ -152,14 +177,17 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Streuung/POOL ({len(streuung)}): {sorted(p.asv_gruppe for p in streuung)}")
 
     if a.write:
-        good = [p for p in proposals if gut(p)]
-        from pathlib import Path
+        manual = load_mapping(MAPPING_MANUAL) if Path(MAPPING_MANUAL).exists() else {}
+        good = [p for p in proposals if gut(p) and p.asv_gruppe not in manual]
+        skipped = sum(1 for p in proposals if gut(p) and p.asv_gruppe in manual)
         Path(a.write).parent.mkdir(parents=True, exist_ok=True)
         with open(a.write, "w", encoding="utf-8", newline="") as f:
-            f.write(f"# ASV-Gruppe;WebUntis-Gruppe[,…] (auto, Abdeckung>={a.min_abdeckung})\n")
+            f.write(f"# Auto-Vorschläge (Abdeckung>={a.min_abdeckung}) — regenerierbar, NICHT editieren.\n")
+            f.write(f"# Kuratierte Einträge/Overrides gehören in {MAPPING_MANUAL} (gewinnt beim Merge).\n")
             for p in sorted(good, key=lambda p: p.asv_gruppe):
                 f.write(f"{p.asv_gruppe};{','.join(p.wu_gruppen)}\n")
-        print(f"\nGeschrieben: {a.write} ({len(good)} Zeilen)")
+        print(f"\nGeschrieben: {a.write} ({len(good)} Zeilen"
+              + (f"; {skipped} bereits in {MAPPING_MANUAL} kuratiert)" if skipped else ")"))
 
 
 if __name__ == "__main__":

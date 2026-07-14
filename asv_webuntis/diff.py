@@ -16,7 +16,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-CATEGORIES = ("FEHLT_IN_WU", "ZUVIEL_IN_WU", "GRUPPE_UNBEKANNT", "SCHUELER_UNBEKANNT")
+CATEGORIES = ("FEHLT_IN_WU", "ZUVIEL_IN_WU", "GRUPPE_UNBEKANNT",
+              "GRUPPE_NUR_IN_WU", "SCHUELER_UNBEKANNT")
 
 # Mapping-Ziel "-" = bewusst kein WebUntis-Pendant (strukturell geklärt, z. B.
 # Poolstunden, die in WU als normale Fachstunden laufen) → nicht als Befund melden.
@@ -58,12 +59,14 @@ def diff(
 
     out: list[Finding] = []
     expected: set[Pair] = set()
+    target_groups: set[str] = set()  # WU-Gruppen, auf die ein ASV-Eintrag zeigt
     for s, g_asv in asv_pairs:
         targets = _targets(m, g_asv)
         if targets == [IGNORE]:  # bewusst kein WU-Pendant → überspringen
             continue
         for t in targets:
             expected.add((s, t))
+            target_groups.add(t)
         if s not in wu_students:
             out.append(Finding("SCHUELER_UNBEKANNT", s, g_asv))
             continue
@@ -75,7 +78,10 @@ def diff(
 
     for s, g_wu in ist_pairs:
         if (s, g_wu) not in expected:
-            out.append(Finding("ZUVIEL_IN_WU", s, g_wu))
+            # Zeigt gar kein ASV auf die Gruppe → Phantom (Spiegel von
+            # GRUPPE_UNBEKANNT); sonst einzelner Extra-Schüler in echter Gruppe.
+            art = "ZUVIEL_IN_WU" if g_wu in target_groups else "GRUPPE_NUR_IN_WU"
+            out.append(Finding(art, s, g_wu))
     return out
 
 
@@ -86,9 +92,16 @@ def summarize(findings: Iterable[Finding]) -> dict:
         "counts": {c: counts.get(c, 0) for c in CATEGORIES},
         "gruppe_unbekannt": sorted({f.gruppe for f in findings
                                     if f.art == "GRUPPE_UNBEKANNT"}),
+        "gruppe_nur_in_wu": sorted({f.gruppe for f in findings
+                                    if f.art == "GRUPPE_NUR_IN_WU"}),
         "schueler_unbekannt": sorted({f.schueler_key for f in findings
                                       if f.art == "SCHUELER_UNBEKANNT"}),
     }
+
+
+# Zwei-Datei-Workflow: Auto-Vorschläge (regenerierbar) + kuratiertes Mapping.
+MAPPING_AUTO = "data/mapping-auto.csv"
+MAPPING_MANUAL = "data/mapping.csv"
 
 
 def load_mapping(path: str | Path) -> dict[str, list[str]]:
@@ -102,6 +115,20 @@ def load_mapping(path: str | Path) -> dict[str, list[str]]:
                 if targets:
                     m[row[0].strip()] = targets
     return m
+
+
+def merge_mappings(*mappings: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Mappings mergen; **spätere gewinnen** (manuell überschreibt auto)."""
+    out: dict[str, list[str]] = {}
+    for m in mappings:
+        out.update(m)
+    return out
+
+
+def load_mappings(paths: Iterable[str | Path]) -> dict[str, list[str]]:
+    """Vorhandene Mapping-Dateien in Reihenfolge laden und mergen (spätere gewinnen).
+    Fehlende Dateien werden übersprungen."""
+    return merge_mappings(*(load_mapping(p) for p in paths if Path(p).exists()))
 
 
 def write_report(findings: Iterable[Finding], path: str | Path) -> None:

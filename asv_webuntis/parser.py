@@ -27,6 +27,8 @@ from pathlib import Path
 COL_KEY = "ID"
 COL_GROUPS = ("besuchter Unterricht des Schülers/der Schülerin "
               "mit Bezeichnung, Fach, Lehrer")
+COL_RUFNAME = "Rufname"
+COL_FAMILIENNAME = "Familienname"
 
 # Komma + optionaler Whitespace VOR dem nächsten Kürzel. Kürzel beginnt mit
 # Großbuchstabe, dann Buchstaben (auch klein: NwT), Ziffern, _ - . und – für
@@ -132,6 +134,29 @@ def parse_export(
             if key:
                 records.extend(parse_row(key, row.get(groups_col) or "", is_klasse))
     return dedupe(records)
+
+
+def load_names(
+    path: str | Path,
+    *,
+    key_col: str = COL_KEY,
+    rufname_col: str = COL_RUFNAME,
+    familienname_col: str = COL_FAMILIENNAME,
+    delimiter: str = ";",
+    encoding: str = "utf-8-sig",
+) -> dict[str, str]:
+    """schueler_key → "Rufname Familienname" (für den lesbaren Report). PII."""
+    names: dict[str, str] = {}
+    with open(path, encoding=encoding, newline="") as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+        _require_cols(reader.fieldnames, key_col, rufname_col, familienname_col)
+        for row in reader:
+            key = (row.get(key_col) or "").strip()
+            if key:
+                ruf = (row.get(rufname_col) or "").strip()
+                fam = (row.get(familienname_col) or "").strip()
+                names[key] = f"{ruf} {fam}".strip()
+    return names
 
 
 def _require_cols(fieldnames: Iterable[str] | None, *cols: str) -> None:

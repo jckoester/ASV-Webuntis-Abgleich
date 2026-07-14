@@ -41,6 +41,23 @@ class TestDiff(unittest.TestCase):
         f2 = diff(asv, ist, {"BK_11", "BK_12"}, {"A", "B"}, mapping={"BKlk": ["BK_11"]})
         self.assertIn(("FEHLT_IN_WU", "B"), {(x.art, x.schueler_key) for x in f2})
 
+    def test_gruppe_nur_in_wu_phantom(self):
+        # WU-Gruppe, auf die kein ASV zeigt → GRUPPE_NUR_IN_WU (nicht ZUVIEL)
+        got = {(x.art, x.gruppe) for x in diff(
+            {("A", "G1")}, {("A", "G1"), ("X", "PHANTOM")},
+            {"G1", "PHANTOM"}, {"A", "X"})}
+        self.assertIn(("GRUPPE_NUR_IN_WU", "PHANTOM"), got)
+        self.assertNotIn(("ZUVIEL_IN_WU", "PHANTOM"), got)
+
+    def test_merge_mappings_manuell_gewinnt(self):
+        from asv_webuntis.diff import merge_mappings
+        auto = {"X": ["autoX"], "Y": ["autoY"]}
+        manual = {"X": ["manuellX"], "Z": ["-"]}
+        m = merge_mappings(auto, manual)
+        self.assertEqual(m["X"], ["manuellX"])  # manuell überschreibt auto
+        self.assertEqual(m["Y"], ["autoY"])
+        self.assertEqual(m["Z"], ["-"])
+
     def test_ignore_sentinel_kein_befund(self):
         # POOL_X bewusst als "kein WU-Pendant" markiert → kein GRUPPE_UNBEKANNT
         f = diff({("A", "POOL_X")}, set(), set(), {"A"}, mapping={"POOL_X": ["-"]})

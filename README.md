@@ -18,6 +18,8 @@ PKM-Vault (`Projekte/ASV-webUntis-Abgleich`).
   Auto-Mapper (Mitglieder-Überlappung, eins-zu-viele für jahrgangsübergreifende
   Kurse) + Mapping-Sentinel `;-`. `GRUPPE_UNBEKANNT` 289 → 11, `FEHLT_IN_WU` 36.
   Rest ist Kuratierung (8 POOL, F6x), kein Code.
+- **Phase 4** (Report) fertig — `report.py`, lesbare Abarbeitungsliste nach
+  Schülergruppe (`abgleich --bericht`). **Alle 5 Plan-Phasen funktional fertig.**
 
 ## Struktur
 
@@ -25,7 +27,10 @@ PKM-Vault (`Projekte/ASV-webUntis-Abgleich`).
 - `asv_webuntis/fetcher.py` — WebUntis-Ist → `Ist(extern_key, studentgroup, von, bis)`.
 - `asv_webuntis/mapper.py` — Auto-Mapping ASV↔WU-Gruppe über Mitglieder-Überlappung.
 - `asv_webuntis/diff.py` — Soll↔Ist-Diff → `Finding(art, schueler_key, gruppe)`.
+- `asv_webuntis/report.py` — lesbarer Report, gruppiert nach Schülergruppe.
 - `asv_webuntis/abgleich.py` — CLI: Parser + Fetcher + Mapping + Diff, Report.
+  Mapping: `data/mapping-auto.csv` (regenerierbar via `mapper --write`) +
+  handgepflegtes `data/mapping.csv` (gewinnt); `abgleich` lädt beide gemergt.
 - `asv_webuntis/inspect_export.py` — Export sezieren (Encoding/Spalten erkennen).
 - `tests/` — Unit-Tests: `python3 -m unittest discover -s tests -t .`
 - `spike/` — Wegwerf-Spikes aus Phase 0 (dokumentiert, können entfernt werden).

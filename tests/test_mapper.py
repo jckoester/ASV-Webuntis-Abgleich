@@ -38,6 +38,14 @@ class TestMapper(unittest.TestCase):
     def test_keine_ueberlappung(self):
         self.assertEqual(propose({("Z", "einsam")}, self.ist), [])
 
+    def test_expand_duplicates(self):
+        from asv_webuntis.mapper import expand_duplicates
+        # K1 und K2 haben identische Mitglieder → Duplikat, beide ins Mapping
+        asv = {("A", "G"), ("B", "G")}
+        ist = {("A", "K1"), ("B", "K1"), ("A", "K2"), ("B", "K2")}
+        p = expand_duplicates(propose(asv, ist), ist)[0]
+        self.assertEqual(set(p.wu_gruppen), {"K1", "K2"})
+
 
 if __name__ == "__main__":
     unittest.main()

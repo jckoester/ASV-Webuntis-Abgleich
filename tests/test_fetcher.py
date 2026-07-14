@@ -2,9 +2,12 @@
 Fixture bildet die in Phase 0 verifizierte /lesson-Struktur nach.
 """
 import datetime
+import tempfile
 import unittest
 
+import asv_webuntis.fetcher as fmod
 from asv_webuntis.fetcher import (
+    Credentials,
     all_students,
     all_studentgroups,
     ist_at,
@@ -80,6 +83,25 @@ class TestKnownSets(unittest.TestCase):
 
     def test_all_students(self):  # inkl. C aus der ganze-Klasse-Lesson
         self.assertEqual(all_students(RAW), {"A", "B", "C"})
+
+
+class TestFetchLessonsLazyCred(unittest.TestCase):
+    def test_cred_none_wird_lazy_geladen(self):
+        # Regression: cred=None + Cache-Miss darf nicht an cred.api_base scheitern.
+        orig = (fmod.credentials_from_env, fmod.get_token, fmod._http)
+        fmod.credentials_from_env = lambda *a, **k: Credentials(
+            "t", "c", "s", api_base="https://api.test")
+        fmod.get_token = lambda cred: "TOK"
+        seen = {}
+        fmod._http = lambda req: (seen.setdefault("url", req.full_url), (200, '{"lessons": []}'))[1]
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                raw = fmod.fetch_lessons(None, "2026-01-01", "2026-01-01",
+                                         cache_dir=d, refresh=True)
+        finally:
+            fmod.credentials_from_env, fmod.get_token, fmod._http = orig
+        self.assertEqual(raw, {"lessons": []})
+        self.assertIn("api.test", seen["url"])
 
 
 class TestWeekRange(unittest.TestCase):
